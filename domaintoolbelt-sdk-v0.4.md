@@ -250,4 +250,6 @@ The SDK now includes a **reasoning_pack** as the canonical meta-example because 
 
 This pack can be dropped in to audit other packs. It is included as a reference in the SDK.
 
+https://github.com/MarkusIsaksson1982/DomainToolBelt-SDK/tree/main/reasoning_pack
+
 ---
