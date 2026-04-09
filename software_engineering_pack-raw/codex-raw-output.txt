@@ -1,0 +1,472 @@
+• Edited 12 files (+436 -0)
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\README.md (+30 -0)
+     1 +# Software Engineering Pack
+     2 +
+     3 +This pack is designed around a domain where I tend to be particularly strong: software engineering guidance, cod
+        e quality, API/versioning decisions, and operational hygiene.
+     4 +
+     5 +Primary sources in the first deterministic version:
+     6 +- `PEP 20`
+     7 +- `PEP 8 Imports`
+     8 +- `PEP 8 Naming`
+     9 +- `12-Factor Config`
+    10 +- `12-Factor Dependencies`
+    11 +- `SemVer 1`
+    12 +- `RFC 2119 MUST`
+    13 +- `RFC 2119 SHOULD`
+    14 +
+    15 +Good example queries:
+    16 +- "How should configuration and dependencies be handled?"
+    17 +- "What guidance applies to breaking API changes?"
+    18 +- "What do the cited sources say about readability and naming?"
+    19 +
+    20 +Framework adaptation notes:
+    21 +- Citation objects would be stronger than plain citation strings.
+    22 +  Ideal fields: `source_id`, `section`, `version`, `ecosystem`, `normative_strength`, `url`.
+    23 +- Source conflict handling would help when standards disagree.
+    24 +  Engineering guidance often mixes style advice, operational practice, and normative specification language.
+    25 +- A first-class distinction between requirements and recommendations would improve synthesis quality.
+    26 +  `RFC 2119 MUST` and `RFC 2119 SHOULD` are not equivalent, and the framework currently treats citations as flat
+         peers.
+    27 +- Ranked or weighted source metadata would help.
+    28 +  For this domain, an authoritative language spec or standard should usually outrank a style guide.
+    29 +- Link-aware outputs would make this pack more useful in practice.
+    30 +  Engineering users often want a source label plus a direct URL or section reference for follow-up.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\__init__.py (+5 -0)
+    1 +from domaintoolbelt.domain_packs.software_engineering_pack.config import SoftwareEngineeringPack
+    2 +
+    3 +PACK_CLASS = SoftwareEngineeringPack
+    4 +
+    5 +__all__ = ["PACK_CLASS", "SoftwareEngineeringPack"]
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\config.py (+133 -0)
+      1 +from __future__ import annotations
+      2 +
+      3 +from pathlib import Path
+      4 +from typing import Any, Mapping
+      5 +
+      6 +from domaintoolbelt.core.prompt_loader import PromptLoader
+      7 +from domaintoolbelt.core.types import (
+      8 +    DomainConfig,
+      9 +    GuardrailConfig,
+     10 +    MemoryConfig,
+     11 +    RAGConfig,
+     12 +    ToolRegistryConfig,
+     13 +    ToolSpec,
+     14 +    ValidationConfig,
+     15 +    ValidationResult,
+     16 +)
+     17 +from domaintoolbelt.domain_packs.software_engineering_pack.mcp_tools import (
+     18 +    TOOLS,
+     19 +    build_retriever,
+     20 +    corpus_records,
+     21 +)
+     22 +from domaintoolbelt.domain_packs.software_engineering_pack.truth_policy import (
+     23 +    SOFTWARE_ENGINEERING_FIDELITY_POLICY,
+     24 +)
+     25 +from domaintoolbelt.domain_packs.software_engineering_pack.validators import (
+     26 +    validate_engineering_output,
+     27 +)
+     28 +from domaintoolbelt.rag.retriever import KeywordRetriever
+     29 +
+     30 +
+     31 +class SoftwareEngineeringPack:
+     32 +    def __init__(self, storage_root: str | Path = ".domaintoolbelt") -> None:
+     33 +        root = Path(storage_root)
+     34 +        prompt_dir = Path(__file__).parent / "prompts"
+     35 +        self._prompt_loader = PromptLoader(prompt_dir)
+     36 +        self._retriever: KeywordRetriever = build_retriever()
+     37 +
+     38 +        self.config = DomainConfig(
+     39 +            key="software_engineering_pack",
+     40 +            display_name="Software Engineering Pack",
+     41 +            description="Reference pack for software engineering guidance grounded in primary engineering stand
+         ards and style references.",
+     42 +            system_prompt_dir=prompt_dir,
+     43 +            fidelity=SOFTWARE_ENGINEERING_FIDELITY_POLICY,
+     44 +            tools=(
+     45 +                ToolSpec(
+     46 +                    name="lookup_practice",
+     47 +                    description="Retrieve the strongest primary engineering guidance for a query.",
+     48 +                    input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
+     49 +                    authoritative=True,
+     50 +                    source_scope="principle",
+     51 +                    tags=("primary", "engineering", "reference"),
+     52 +                ),
+     53 +                ToolSpec(
+     54 +                    name="cross_reference_standard",
+     55 +                    description="Find supporting standards and style references connected to the primary guidan
+         ce.",
+     56 +                    input_schema={"type": "object", "properties": {"seed_summary": {"type": "string"}}},
+     57 +                    source_scope="standard",
+     58 +                    tags=("cross", "reference", "secondary", "standard"),
+     59 +                ),
+     60 +                ToolSpec(
+     61 +                    name="engineering_summary",
+     62 +                    description="Compose a grounded synthesis from the gathered engineering guidance.",
+     63 +                    input_schema={
+     64 +                        "type": "object",
+     65 +                        "properties": {
+     66 +                            "primary": {"type": "string"},
+     67 +                            "secondary": {"type": "string"},
+     68 +                        },
+     69 +                    },
+     70 +                    source_scope="principle",
+     71 +                    tags=("summary", "synthesis", "theme"),
+     72 +                ),
+     73 +            ),
+     74 +            tool_registry=ToolRegistryConfig(max_tools_per_step=3),
+     75 +            rag=RAGConfig(
+     76 +                enabled=True,
+     77 +                corpus_path=root / "engineering_corpus",
+     78 +                top_k_retrieval=4,
+     79 +                similarity_threshold=0.2,
+     80 +                verbatim_sources=tuple(record["id"] for record in corpus_records()),
+     81 +            ),
+     82 +            memory=MemoryConfig(store_path=root / "memory"),
+     83 +            validation=ValidationConfig(max_retries=1),
+     84 +            guardrails=GuardrailConfig(
+     85 +                tradition_flags={
+     86 +                    "ecosystem": "general software engineering with Python-adjacent standards",
+     87 +                    "method": "primary-source-first",
+     88 +                    "fidelity": "citation required",
+     89 +                },
+     90 +                require_corpus_citation=True,
+     91 +                require_primary_source=True,
+     92 +            ),
+     93 +            max_parallel_steps=2,
+     94 +            tradition_flags={"domain": "software_engineering", "mode": "reference"},
+     95 +        )
+     96 +
+     97 +    async def run_tool(
+     98 +        self,
+     99 +        tool_name: str,
+    100 +        instruction: str,
+    101 +        arguments: Mapping[str, Any] | None = None,
+    102 +    ) -> Any:
+    103 +        if tool_name not in TOOLS:
+    104 +            raise KeyError(f"Unknown software engineering pack tool: {tool_name}")
+    105 +        return await TOOLS[tool_name](instruction, arguments)
+    106 +
+    107 +    async def retrieve_context(self, query: str, top_k: int = 5) -> list[str]:
+    108 +        matches = self._retriever.search(query, top_k=top_k)
+    109 +        return [item["text"] for item in matches]
+    110 +
+    111 +    def validate_step(self, tool_name: str, output: Any) -> ValidationResult:
+    112 +        return validate_engineering_output(tool_name, output)
+    113 +
+    114 +    def fidelity_audit(self, synthesis: str, citations: tuple[str, ...]) -> ValidationResult:
+    115 +        issues: list[str] = []
+    116 +        if not citations:
+    117 +            issues.append("Final synthesis must include explicit engineering citations.")
+    118 +        if "I think" in synthesis or "probably" in synthesis.lower():
+    119 +            issues.append("Final synthesis contains speculative engineering language.")
+    120 +        return ValidationResult(ok=not issues, issues=tuple(issues))
+    121 +
+    122 +    def disambiguate_intent(self, query: str) -> str:
+    123 +        lowered = query.lower()
+    124 +        if any(term in lowered for term in ("config", "environment", "dependency")):
+    125 +            return "The request concerns configuration and dependency management."
+    126 +        if any(term in lowered for term in ("version", "release", "breaking change", "api")):
+    127 +            return "The request concerns versioning and compatibility."
+    128 +        if any(term in lowered for term in ("style", "readability", "naming", "import")):
+    129 +            return "The request concerns coding style and readability."
+    130 +        return "The request concerns general software engineering practice."
+    131 +
+    132 +    def load_prompt(self, filename: str, **variables: Any) -> str:
+    133 +        return self._prompt_loader.load(filename, **variables)
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\mcp_tools.py (+189 -0)
+      1 +from __future__ import annotations
+      2 +
+      3 +import re
+      4 +from typing import Any, Mapping
+      5 +
+      6 +from domaintoolbelt.core.types import ToolResult
+      7 +from domaintoolbelt.rag.retriever import KeywordRetriever
+      8 +
+      9 +
+     10 +_REFERENCE_RE = re.compile(
+     11 +    r"\b(?:PEP 20|PEP 8 Imports|PEP 8 Naming|12-Factor Config|12-Factor Dependencies|SemVer 1|RFC 2119 MUST|RFC
+          2119 SHOULD)\b"
+     12 +)
+     13 +
+     14 +_CORPUS = [
+     15 +    {
+     16 +        "id": "PEP 20",
+     17 +        "text": "Explicit is better than implicit. Simple is better than complex. Readability counts.",
+     18 +    },
+     19 +    {
+     20 +        "id": "PEP 8 Imports",
+     21 +        "text": "Imports are usually on separate lines and grouped as standard library imports, related third p
+         arty imports, and local application or library specific imports.",
+     22 +    },
+     23 +    {
+     24 +        "id": "PEP 8 Naming",
+     25 +        "text": "Function names should be lowercase, with words separated by underscores as necessary to improv
+         e readability.",
+     26 +    },
+     27 +    {
+     28 +        "id": "12-Factor Config",
+     29 +        "text": "Store config in the environment.",
+     30 +    },
+     31 +    {
+     32 +        "id": "12-Factor Dependencies",
+     33 +        "text": "Explicitly declare and isolate dependencies.",
+     34 +    },
+     35 +    {
+     36 +        "id": "SemVer 1",
+     37 +        "text": "Given a version number MAJOR.MINOR.PATCH, increment the MAJOR version for incompatible API cha
+         nges, the MINOR version for backward compatible functionality, and the PATCH version for backward compatible bu
+         g fixes.",
+     38 +    },
+     39 +    {
+     40 +        "id": "RFC 2119 MUST",
+     41 +        "text": "MUST means that the definition is an absolute requirement of the specification.",
+     42 +    },
+     43 +    {
+     44 +        "id": "RFC 2119 SHOULD",
+     45 +        "text": "SHOULD means that there may exist valid reasons to ignore a particular item, but the full impl
+         ications must be understood and carefully weighed.",
+     46 +    },
+     47 +]
+     48 +
+     49 +_CROSS_REFERENCES = {
+     50 +    "12-Factor Config": ("12-Factor Dependencies", "PEP 20"),
+     51 +    "12-Factor Dependencies": ("12-Factor Config", "PEP 20"),
+     52 +    "PEP 8 Imports": ("PEP 20", "PEP 8 Naming"),
+     53 +    "PEP 8 Naming": ("PEP 20", "PEP 8 Imports"),
+     54 +    "SemVer 1": ("RFC 2119 MUST", "RFC 2119 SHOULD"),
+     55 +    "RFC 2119 MUST": ("SemVer 1", "RFC 2119 SHOULD"),
+     56 +}
+     57 +
+     58 +
+     59 +def build_retriever() -> KeywordRetriever:
+     60 +    return KeywordRetriever(corpus_records())
+     61 +
+     62 +
+     63 +def corpus_records() -> list[dict[str, str]]:
+     64 +    return [{"id": item["id"], "text": f"[{item['id']}] {item['text']}"} for item in _CORPUS]
+     65 +
+     66 +
+     67 +async def lookup_practice(instruction: str, arguments: Mapping[str, Any] | None = None) -> ToolResult:
+     68 +    query = _extract_query(instruction, arguments)
+     69 +    matches = build_retriever().search(query, top_k=4)
+     70 +    citations = tuple(item["id"] for item in matches)
+     71 +    passages = [item["text"] for item in matches]
+     72 +    summary = "Primary engineering guidance: " + "; ".join(passages)
+     73 +    return ToolResult(
+     74 +        content={"summary": summary, "citations": citations, "passages": passages},
+     75 +        citations=citations,
+     76 +    )
+     77 +
+     78 +
+     79 +async def cross_reference_standard(
+     80 +    instruction: str,
+     81 +    arguments: Mapping[str, Any] | None = None,
+     82 +) -> ToolResult:
+     83 +    seed_text = _extract_query(instruction, arguments)
+     84 +    seed_citations = _extract_references(seed_text)
+     85 +    related: list[str] = []
+     86 +    for citation in seed_citations:
+     87 +        related.extend(_CROSS_REFERENCES.get(citation, ()))
+     88 +
+     89 +    if not related:
+     90 +        lowered = seed_text.lower()
+     91 +        if "config" in lowered or "dependency" in lowered:
+     92 +            related = ["12-Factor Config", "12-Factor Dependencies", "PEP 20"]
+     93 +        elif "version" in lowered or "release" in lowered or "breaking change" in lowered:
+     94 +            related = ["SemVer 1", "RFC 2119 MUST", "RFC 2119 SHOULD"]
+     95 +        else:
+     96 +            related = ["PEP 20", "PEP 8 Imports", "PEP 8 Naming"]
+     97 +
+     98 +    rendered = [f"[{reference}] {_lookup_text(reference)}" for reference in related]
+     99 +    citations = tuple(related)
+    100 +    summary = "Cross references: " + "; ".join(rendered)
+    101 +    return ToolResult(
+    102 +        content={"summary": summary, "citations": citations, "passages": rendered},
+    103 +        citations=citations,
+    104 +    )
+    105 +
+    106 +
+    107 +async def engineering_summary(
+    108 +    instruction: str,
+    109 +    arguments: Mapping[str, Any] | None = None,
+    110 +) -> ToolResult:
+    111 +    arguments = arguments or {}
+    112 +    primary = str(arguments.get("primary") or instruction)
+    113 +    secondary = str(arguments.get("secondary") or "")
+    114 +    combined = f"{instruction}\n{primary}\n{secondary}"
+    115 +    lowered = combined.lower()
+    116 +    references = _extract_references(combined)
+    117 +
+    118 +    if "config" in lowered or "dependency" in lowered or "environment" in lowered:
+    119 +        citations = ("12-Factor Config", "12-Factor Dependencies", "PEP 20")
+    120 +        summary = (
+    121 +            "For configuration and dependency handling, the cited guidance says to store config in the environm
+         ent "
+    122 +            "[12-Factor Config], explicitly declare and isolate dependencies [12-Factor Dependencies], and pref
+         er "
+    123 +            "explicit over implicit design choices [PEP 20]."
+    124 +        )
+    125 +    elif "version" in lowered or "release" in lowered or "breaking change" in lowered or "api" in lowered:
+    126 +        citations = ("SemVer 1", "RFC 2119 MUST", "RFC 2119 SHOULD")
+    127 +        summary = (
+    128 +            "For versioning and compatibility, the cited guidance uses MAJOR.MINOR.PATCH rules for incompatible
+          "
+    129 +            "API changes, backward compatible functionality, and backward compatible bug fixes [SemVer 1]. "
+    130 +            "RFC language also distinguishes absolute requirements from carefully weighed recommendations "
+    131 +            "[RFC 2119 MUST][RFC 2119 SHOULD]."
+    132 +        )
+    133 +    elif "style" in lowered or "readability" in lowered or "naming" in lowered or "import" in lowered:
+    134 +        citations = ("PEP 20", "PEP 8 Imports", "PEP 8 Naming")
+    135 +        summary = (
+    136 +            "For code style, the cited guidance emphasizes that explicit is better than implicit and readabilit
+         y counts "
+    137 +            "[PEP 20]. It also recommends grouped imports [PEP 8 Imports] and lowercase underscore-separated "
+    138 +            "function names to improve readability [PEP 8 Naming]."
+    139 +        )
+    140 +    else:
+    141 +        citations = references or (
+    142 +            "PEP 20",
+    143 +            "12-Factor Dependencies",
+    144 +            "12-Factor Config",
+    145 +            "SemVer 1",
+    146 +        )
+    147 +        summary = (
+    148 +            "Across the cited sources, strong software engineering guidance emphasizes explicit and readable de
+         sign "
+    149 +            "[PEP 20], explicitly declared and isolated dependencies [12-Factor Dependencies], configuration st
+         ored "
+    150 +            "in the environment [12-Factor Config], and clear MAJOR.MINOR.PATCH versioning rules [SemVer 1]."
+    151 +        )
+    152 +
+    153 +    return ToolResult(
+    154 +        content={"summary": summary, "citations": citations, "theme": "software_engineering"},
+    155 +        citations=tuple(citations),
+    156 +    )
+    157 +
+    158 +
+    159 +TOOLS = {
+    160 +    "lookup_practice": lookup_practice,
+    161 +    "cross_reference_standard": cross_reference_standard,
+    162 +    "engineering_summary": engineering_summary,
+    163 +}
+    164 +
+    165 +
+    166 +def _extract_query(instruction: str, arguments: Mapping[str, Any] | None) -> str:
+    167 +    if arguments:
+    168 +        for key in ("query", "seed_summary", "primary", "secondary"):
+    169 +            if arguments.get(key):
+    170 +                return str(arguments[key])
+    171 +    return instruction
+    172 +
+    173 +
+    174 +def _extract_references(text: str) -> tuple[str, ...]:
+    175 +    seen: list[str] = []
+    176 +    bracketed = re.findall(r"\[([^\[\]]+)\]", text)
+    177 +    raw = bracketed + _REFERENCE_RE.findall(text)
+    178 +    for reference in raw:
+    179 +        cleaned = reference.strip()
+    180 +        if cleaned not in seen:
+    181 +            seen.append(cleaned)
+    182 +    return tuple(seen)
+    183 +
+    184 +
+    185 +def _lookup_text(reference: str) -> str:
+    186 +    for record in _CORPUS:
+    187 +        if record["id"] == reference:
+    188 +            return record["text"]
+    189 +    return "Reference text placeholder."
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\create_action_plan.md (+5 -0)
+    1 +You are building a faithful software-engineering action plan.
+    2 +
+    3 +Request: {request}
+    4 +
+    5 +Produce a short plan that gathers primary engineering guidance first, then supporting standards, then a final cit
+       ation-rich synthesis.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\intent_disambiguation.md (+3 -0)
+    1 +Identify the software-engineering intent and likely concern area.
+    2 +
+    3 +Request: {request}
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\supervisor.md (+6 -0)
+    1 +Review the engineering workflow for fidelity.
+    2 +
+    3 +Requirements:
+    4 +- Keep citations mandatory.
+    5 +- Prefer primary engineering guidance before commentary.
+    6 +- Avoid speculative language.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\tool_instruction.md (+6 -0)
+    1 +Use the selected engineering tool carefully.
+    2 +
+    3 +Step: {step_description}
+    4 +Request: {request}
+    5 +
+    6 +Preserve explicit citations and maintain the difference between hard requirements and recommended practice.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\tool_selection.md (+6 -0)
+    1 +Select the smallest useful engineering tool set for the current step.
+    2 +
+    3 +Available tools:
+    4 +{tools}
+    5 +
+    6 +Return a Python list of tool names ordered by usefulness.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\prompts\write_final_answer.md (+6 -0)
+    1 +Write a concise final engineering answer grounded in cited sources.
+    2 +
+    3 +Request: {request}
+    4 +Evidence: {evidence}
+    5 +
+    6 +The answer must retain explicit citations, avoid speculative phrasing, and preserve whether the cited guidance is
+        a requirement or a recommendation when relevant.
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\truth_policy.py (+12 -0)
+     1 +from domaintoolbelt.core.types import FidelityMode, FidelityPolicy
+     2 +
+     3 +
+     4 +SOFTWARE_ENGINEERING_FIDELITY_POLICY = FidelityPolicy(
+     5 +    mode=FidelityMode.GROUNDED,
+     6 +    require_citations=True,
+     7 +    strict_verbatim_only=False,
+     8 +    allow_unverified_paraphrase=False,
+     9 +    allowed_source_scopes=("principle", "style", "operations", "standard"),
+    10 +    forbidden_patterns=(r"\bi think\b", r"\bprobably\b", r"\bobviously\b"),
+    11 +    final_checks=("citations", "scope", "tradition"),
+    12 +)
+
+  └ DomainToolBelt-main\domaintoolbelt\domain_packs\software_engineering_pack\validators.py (+35 -0)
+     1 +from __future__ import annotations
+     2 +
+     3 +import re
+     4 +from typing import Any, Mapping
+     5 +
+     6 +from domaintoolbelt.core.types import ValidationResult
+     7 +
+     8 +
+     9 +_ENGINEERING_CITATION_RE = re.compile(
+    10 +    r"^(PEP 20|PEP 8 Imports|PEP 8 Naming|12-Factor Config|12-Factor Dependencies|SemVer 1|RFC 2119 MUST|RFC 211
+        9 SHOULD)$"
+    11 +)
+    12 +
+    13 +
+    21 +        return ValidationResult(ok=False, issues=("Tool output summary is empty.",))
+    22 +    if not citations:
+    23 +        return ValidationResult(ok=False, issues=("Tool output is missing citations.",))
+    24 +
+    25 +    invalid = [
+    26 +        str(citation)
+    27 +        for citation in citations
+    28 +        if not _ENGINEERING_CITATION_RE.match(str(citation))
+    29 +    ]
+    30 +    if invalid:
+    31 +        return ValidationResult(
+    32 +            ok=False,
+    33 +            issues=(f"Tool output contains invalid engineering citations: {', '.join(invalid)}",),
+    34 +        )
+    35 +    return ValidationResult(ok=True)
