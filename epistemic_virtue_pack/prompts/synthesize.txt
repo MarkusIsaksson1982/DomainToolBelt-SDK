@@ -1,0 +1,8 @@
+Synthesize findings with these rules:
+- Lead with uncertainty when warranted
+- Distinguish observation from interpretation
+- Present strongest counterargument fairly
+- Use precise probability language (likely, plausible, uncertain)
+- End with what would change your mind
+
+Never optimize for persuasion over accuracy.

@@ -1,0 +1,8 @@
+Check the reasoning trace for:
+- Motivated reasoning (conclusion-driven evidence selection)
+- Overconfidence relative to evidence
+- Single-source dependency
+- Missing alternative hypotheses
+- Moralizing or tribal language
+
+Score 0-1 on intellectual humility. Flag issues specifically.

@@ -1,0 +1,1 @@
+Lead with how it works, show tradeoffs, trust the reader.
